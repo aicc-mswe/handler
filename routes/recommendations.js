@@ -42,6 +42,14 @@ INSTRUCTIONS:
 4. Ensure recommendations are realistic and match the user's financial profile
 5. Prioritize cards with the highest match to user preferences
 
+IMPORTANT REQUIREMENTS:
+- Use REAL credit card image URLs from the OFFICIAL BANK WEBSITE for each specific card
+- Use REAL credit card application URLs from the OFFICIAL BANK WEBSITE for each specific card
+- DO NOT use placeholder URLs like "https://example.com"
+- Each card should have its own unique image URL from its issuing bank's website
+- Each card should have its own unique application URL from its issuing bank's website
+- Different banks will have DIFFERENT domain names (e.g., Chase cards use chase.com, Amex cards use americanexpress.com, Citi cards use citi.com, Capital One cards use capitalone.com, etc.)
+
 OUTPUT FORMAT:
 You must respond with a valid JSON array following this exact structure:
 [
@@ -49,16 +57,32 @@ You must respond with a valid JSON array following this exact structure:
     "id": 1,
     "name": "Card Name",
     "bankName": "Bank Name",
-    "image": "https://example.com/card-image.png",
+    "image": "REAL_IMAGE_URL_FROM_OFFICIAL_BANK_WEBSITE",
     "fee": "$XX",
     "cardType": "VISA/Mastercard/American Express/Discover",
     "rewards": "Brief description of rewards",
     "description": "Detailed description explaining why this card suits the user",
     "pros": ["Benefit 1", "Benefit 2", "Benefit 3"],
     "cons": ["Drawback 1", "Drawback 2"],
-    "applyLink": "https://example.com/apply"
+    "applyLink": "REAL_APPLICATION_URL_FROM_OFFICIAL_BANK_WEBSITE"
   }
 ]
+
+Examples of real URLs from different banks:
+- Chase Sapphire Preferred:
+  * image: "https://creditcards.chase.com/K-Marketplace/images/cardart/sapphire_preferred_card.png"
+  * applyLink: "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred"
+- American Express Gold Card:
+  * image: "https://icm.aexp-static.com/content/dam/amex/us/credit-cards/features-benefits/policies/Gold-Card.png"
+  * applyLink: "https://www.americanexpress.com/us/credit-cards/card/gold-card/"
+- Citi Double Cash:
+  * image: "https://www.citi.com/CRD/images/citi-double-cash-card/card.png"
+  * applyLink: "https://www.citi.com/credit-cards/citi-double-cash-credit-card"
+- Capital One Venture:
+  * image: "https://ecm.capitalone.com/WCM/card/products/venture-card-art.png"
+  * applyLink: "https://www.capitalone.com/credit-cards/venture/"
+
+CRITICAL: Each recommended card MUST use URLs from its OWN issuing bank's official website. Do not use the same domain for different banks.
 
 Respond ONLY with the JSON array, no additional text or explanation.`;
 
@@ -73,33 +97,48 @@ async function queryLLM(prompt) {
     const ragEndpoint = process.env.RAG_RETRIEVER_ENDPOINT || 'http://localhost:5002';
     const url = `${ragEndpoint}/query`;
     
-    console.log(`\n=== Calling RAG Retriever ===`);
-    console.log(`Endpoint: ${url}`);
-    
-    const response = await axios.post(url, {
+    const requestPayload = {
       question: prompt,
       index_name: null,
       enable_reranking: true,
       model_name: "gpt-3.5-turbo",
       rerank_top_k: 10
-    }, {
+    };
+    
+    console.log(`\n=== Calling RAG Retriever ===`);
+    console.log(`Endpoint: ${url}`);
+    console.log('Request payload:');
+    console.log(JSON.stringify(requestPayload, null, 2));
+    
+    const response = await axios.post(url, requestPayload, {
       headers: {
         'Content-Type': 'application/json'
       },
       timeout: 60000 // 60 seconds timeout
     });
     
-    console.log('RAG Retriever response received');
+    console.log('\n=== RAG Retriever Response ===');
     console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+    console.log('Response data:');
+    console.log(JSON.stringify(response.data, null, 2));
+    console.log('=== End of RAG Retriever Response ===\n');
     
     return response.data;
     
   } catch (error) {
-    console.error('Error calling RAG retriever:', error.message);
+    console.error('\n=== RAG Retriever Error ===');
+    console.error('Error message:', error.message);
     if (error.response) {
       console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
+      console.error('Response headers:', error.response.headers);
+      console.error('Response data:', JSON.stringify(error.response.data, null, 2));
     }
+    if (error.request) {
+      console.error('Request was made but no response received');
+      console.error('Request details:', error.request);
+    }
+    console.error('=== End of RAG Retriever Error ===\n');
     throw error;
   }
 }
@@ -237,20 +276,29 @@ router.post('/generate', upload.none(), async (req, res) => {
       
       try {
         llmResponse = await queryLLM(prompt);
-        console.log('\n=== LLM Response ===');
-        console.log(JSON.stringify(llmResponse, null, 2));
-        console.log('=== End of LLM Response ===\n');
         
+        console.log('\n=== Parsing LLM Response ===');
         // Parse LLM response to extract recommendations
-        if (llmResponse && llmResponse.answer) {
+        // The response is in llmResponse.response field
+        const answerField = llmResponse.response || llmResponse.answer;
+        
+        if (llmResponse && answerField) {
+          console.log('LLM answer field found');
+          console.log('Answer length:', answerField.length);
+          console.log('First 200 chars of answer:', answerField.substring(0, 200));
+          
           try {
             // Try to parse JSON from the answer
-            const jsonMatch = llmResponse.answer.match(/\[[\s\S]*\]/);
+            const jsonMatch = answerField.match(/\[[\s\S]*\]/);
             if (jsonMatch) {
+              console.log('JSON array found in answer');
+              console.log('JSON string:', jsonMatch[0]);
               recommendations = JSON.parse(jsonMatch[0]);
               console.log('Successfully parsed recommendations from LLM');
+              console.log('Number of recommendations:', recommendations.length);
             } else {
               console.error('No JSON array found in LLM response');
+              console.error('Full answer:', answerField);
               jobs[jobId] = {
                 status: 'failed',
                 error: 'LLM response did not contain valid JSON array'
@@ -259,6 +307,7 @@ router.post('/generate', upload.none(), async (req, res) => {
             }
           } catch (parseError) {
             console.error('Failed to parse LLM response as JSON:', parseError);
+            console.error('Attempted to parse:', jsonMatch ? jsonMatch[0] : 'N/A');
             jobs[jobId] = {
               status: 'failed',
               error: 'Failed to parse LLM response'
@@ -267,12 +316,14 @@ router.post('/generate', upload.none(), async (req, res) => {
           }
         } else {
           console.error('LLM response format unexpected');
+          console.error('Response structure:', Object.keys(llmResponse || {}));
           jobs[jobId] = {
             status: 'failed',
             error: 'Unexpected LLM response format'
           };
           return;
         }
+        console.log('=== End of Parsing ===\n');
       } catch (llmError) {
         console.error('LLM query failed:', llmError.message);
         jobs[jobId] = {
