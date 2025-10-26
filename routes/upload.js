@@ -6,7 +6,8 @@ const { randomUUID } = require('crypto');
 const router = express.Router();
 
 // Create temp directory for uploaded files
-const tempDir = path.join(__dirname, '../temp');
+// Use /tmp for serverless environments (Vercel, AWS Lambda, etc.)
+const tempDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../temp');
 if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true });
 }
