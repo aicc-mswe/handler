@@ -12,9 +12,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Import routes
 const recommendationsRouter = require('./routes/recommendations');
+const uploadRouter = require('./routes/upload');
 
 // Use routes
 app.use('/recommendations', recommendationsRouter);
+app.use('/upload', uploadRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
