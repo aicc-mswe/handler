@@ -21,28 +21,36 @@ const { randomUUID } = require('crypto');
  * Build prompt for LLM to generate credit card recommendations
  */
 function buildRecommendationPrompt(filters, ocrText) {
-  const prompt = `You are a credit card recommendation expert. Based on the user's preferences and financial information, recommend suitable credit cards.
+  const prompt = `You are a credit card recommendation expert. Based on the user's preferences and spending patterns, recommend suitable credit cards.
 
-USER PREFERENCES:
-${filters.cardTypes && filters.cardTypes.length > 0 ? `- Preferred Card Types: ${filters.cardTypes.join(', ')}` : '- No card type preference'}
+USER PREFERENCES AND FILTERS:
+${filters.cardTypes && filters.cardTypes.length > 0 ? `- Required Card Network: ${filters.cardTypes.join(', ')} *** MANDATORY - ONLY recommend cards from this network ***` : '- No card network restriction'}
 ${filters.rewardTypes && filters.rewardTypes.length > 0 ? `- Desired Reward Types: ${filters.rewardTypes.join(', ')}` : '- No reward type preference'}
 ${filters.annualFeeRange ? `- Annual Fee Range: $${filters.annualFeeRange}` : '- No annual fee preference'}
 ${filters.additionalRequirements ? `- Additional Requirements: ${filters.additionalRequirements}` : ''}
 
-${ocrText ? `USER FINANCIAL INFORMATION (from uploaded document):
+${ocrText ? `USER SPENDING PATTERNS (from uploaded statement):
 ${ocrText}
 
-Please analyze the user's financial situation from the document and consider it when making recommendations.
-` : 'No financial document provided.'}
+IMPORTANT: The uploaded document shows the user's SPENDING HABITS and transaction history. Analyze ONLY the spending categories, amounts, and patterns. DO NOT consider which bank issued this statement. You can recommend cards from ANY bank/issuer as long as they match the user's spending patterns and filters.
+` : 'No spending data provided.'}
 
-INSTRUCTIONS:
-1. Analyze the user's preferences and financial situation
-2. Recommend exactly 3 credit cards that best match their needs (ranked by match score)
-3. For each card, provide detailed information including benefits, pros, and cons
-4. Ensure recommendations are realistic and match the user's financial profile
-5. Prioritize cards with the highest match to user preferences
+CRITICAL INSTRUCTIONS:
+1. **MANDATORY CARD NETWORK FILTER**: If "Required Card Network" is specified (e.g., VISA, Mastercard, American Express, Discover), you MUST ONLY recommend cards from that exact network. This is NON-NEGOTIABLE.
+   - Example: If filter = "VISA", recommend ONLY VISA cards (from any bank: Chase, Bank of America, Citi, etc.)
+   - Example: If filter = "Mastercard", recommend ONLY Mastercard cards (from any bank)
+   - Example: If filter = "American Express", recommend ONLY American Express cards
+2. Focus on the user's SPENDING PATTERNS from the uploaded statement, NOT the issuing bank
+3. You can recommend cards from ANY bank/issuer, as long as the card network matches the filter
+4. Analyze spending categories (dining, travel, groceries, gas, etc.) to match with appropriate reward structures
+5. Recommend exactly 3 credit cards that best match the spending patterns and filters (ranked by match score)
+6. Provide detailed information including benefits, pros, and cons for each card
+7. Ensure recommendations align with the user's spending habits and financial profile
 
 IMPORTANT REQUIREMENTS:
+- **CARD NETWORK COMPLIANCE**: Strictly follow the "Required Card Network" filter. All recommended cards must be from the specified network (VISA/Mastercard/American Express/Discover)
+- **IGNORE STATEMENT ISSUER**: Do not let the bank that issued the uploaded statement influence your recommendations. Focus only on spending patterns.
+- **CROSS-BANK RECOMMENDATIONS**: Feel free to recommend cards from different banks (Chase, Citi, Bank of America, Capital One, etc.) as long as they match the card network filter
 - Use REAL credit card image URLs from the OFFICIAL BANK WEBSITE for each specific card
 - Use REAL credit card application URLs from the OFFICIAL BANK WEBSITE for each specific card
 - DO NOT use placeholder URLs like "https://example.com"
@@ -51,24 +59,44 @@ IMPORTANT REQUIREMENTS:
 - Different banks will have DIFFERENT domain names (e.g., Chase cards use chase.com, Amex cards use americanexpress.com, Citi cards use citi.com, Capital One cards use capitalone.com, etc.)
 
 OUTPUT FORMAT:
-You must respond with a valid JSON array following this exact structure:
-[
-  {
-    "id": 1,
-    "name": "Card Name",
-    "bankName": "Bank Name",
-    "image": "REAL_IMAGE_URL_FROM_OFFICIAL_BANK_WEBSITE",
-    "fee": "$XX",
-    "cardType": "VISA/Mastercard/American Express/Discover",
-    "rewards": "Brief description of rewards",
-    "description": "Detailed description explaining why this card suits the user",
-    "pros": ["Benefit 1", "Benefit 2", "Benefit 3"],
-    "cons": ["Drawback 1", "Drawback 2"],
-    "applyLink": "REAL_APPLICATION_URL_FROM_OFFICIAL_BANK_WEBSITE"
-  }
-]
+You must respond with a valid JSON object with the following structure:
+{
+  "summary": "A 2-3 sentence explanation of WHY you are recommending these specific 3 cards based on the user's spending patterns and filters. Explain how they align with the user's needs.",
+  "cards": [
+    {
+      "id": 1,
+      "name": "Card Name",
+      "bankName": "Bank Name",
+      "image": "REAL_IMAGE_URL_FROM_OFFICIAL_BANK_WEBSITE",
+      "fee": "$XX",
+      "cardType": "VISA/Mastercard/American Express/Discover (MUST match the Required Card Network filter)",
+      "rewards": "Brief description of rewards that align with user's spending patterns",
+      "description": "Detailed description explaining why this card suits the user's SPENDING HABITS",
+      "pros": ["Benefit 1 related to spending", "Benefit 2", "Benefit 3"],
+      "cons": ["Drawback 1", "Drawback 2"],
+      "applyLink": "REAL_APPLICATION_URL_FROM_OFFICIAL_BANK_WEBSITE"
+    }
+  ]
+}
 
-Examples of real URLs from different banks:
+Example summary:
+"Based on your high spending on dining and travel, these three VISA cards offer the best rewards in those categories. The Chase Sapphire Preferred leads with 2x points on travel and dining, while the Bank of America Travel Rewards provides no annual fee access to travel perks. The Citi Premier rounds out with bonus points on restaurants and gas stations."
+
+Examples showing cross-bank recommendations within the same network:
+- If filter = "VISA", you can recommend:
+  * Chase Sapphire Preferred (VISA)
+  * Bank of America Travel Rewards (VISA)
+  * Citi Premier Card (VISA)
+- If filter = "Mastercard", you can recommend:
+  * Citi Double Cash (Mastercard)
+  * Capital One Venture (Mastercard)
+  * US Bank Altitude Reserve (Mastercard)
+- If filter = "American Express", you can recommend:
+  * American Express Gold Card
+  * American Express Platinum Card
+  * American Express Blue Cash Preferred
+
+Example URLs from different banks:
 - Chase Sapphire Preferred:
   * image: "https://creditcards.chase.com/K-Marketplace/images/cardart/sapphire_preferred_card.png"
   * applyLink: "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred"
@@ -84,7 +112,7 @@ Examples of real URLs from different banks:
 
 CRITICAL: Each recommended card MUST use URLs from its OWN issuing bank's official website. Do not use the same domain for different banks.
 
-Respond ONLY with the JSON array, no additional text or explanation.`;
+Respond ONLY with the JSON object containing both "summary" and "cards" array, no additional text or explanation.`;
 
   return prompt;
 }
@@ -272,6 +300,7 @@ router.post('/generate', upload.none(), async (req, res) => {
       
       // Call RAG retriever to get LLM recommendations
       let recommendations = [];
+      let summary = null;
       let llmResponse = null;
       
       try {
@@ -285,29 +314,59 @@ router.post('/generate', upload.none(), async (req, res) => {
         if (llmResponse && answerField) {
           console.log('LLM answer field found');
           console.log('Answer length:', answerField.length);
-          console.log('First 200 chars of answer:', answerField.substring(0, 200));
+          console.log('First 500 chars of answer:', answerField.substring(0, 500));
           
           try {
-            // Try to parse JSON from the answer
-            const jsonMatch = answerField.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-              console.log('JSON array found in answer');
-              console.log('JSON string:', jsonMatch[0]);
-              recommendations = JSON.parse(jsonMatch[0]);
-              console.log('Successfully parsed recommendations from LLM');
-              console.log('Number of recommendations:', recommendations.length);
-            } else {
-              console.error('No JSON array found in LLM response');
-              console.error('Full answer:', answerField);
-              jobs[jobId] = {
-                status: 'failed',
-                error: 'LLM response did not contain valid JSON array'
-              };
-              return;
+            // Try to parse JSON object from the answer (new format with summary)
+            const jsonObjectMatch = answerField.match(/\{[\s\S]*\}/);
+            if (jsonObjectMatch) {
+              console.log('JSON object found in answer');
+              const parsedResponse = JSON.parse(jsonObjectMatch[0]);
+              
+              // Check if it has the new format with summary and cards
+              if (parsedResponse.summary && parsedResponse.cards) {
+                summary = parsedResponse.summary;
+                recommendations = parsedResponse.cards;
+                console.log('Successfully parsed new format with summary');
+                console.log('Summary:', summary);
+                console.log('Number of recommendations:', recommendations.length);
+              } 
+              // Fallback: check if it's the old array format
+              else if (Array.isArray(parsedResponse)) {
+                recommendations = parsedResponse;
+                console.log('Successfully parsed old array format');
+                console.log('Number of recommendations:', recommendations.length);
+              } else {
+                console.error('Unexpected JSON structure');
+                console.error('Parsed response keys:', Object.keys(parsedResponse));
+                jobs[jobId] = {
+                  status: 'failed',
+                  error: 'LLM response structure is unexpected'
+                };
+                return;
+              }
+            } 
+            // Fallback: try to match array format (old format)
+            else {
+              const jsonArrayMatch = answerField.match(/\[[\s\S]*\]/);
+              if (jsonArrayMatch) {
+                console.log('JSON array found in answer (old format)');
+                recommendations = JSON.parse(jsonArrayMatch[0]);
+                console.log('Successfully parsed recommendations from LLM (old format)');
+                console.log('Number of recommendations:', recommendations.length);
+              } else {
+                console.error('No JSON object or array found in LLM response');
+                console.error('Full answer:', answerField);
+                jobs[jobId] = {
+                  status: 'failed',
+                  error: 'LLM response did not contain valid JSON'
+                };
+                return;
+              }
             }
           } catch (parseError) {
             console.error('Failed to parse LLM response as JSON:', parseError);
-            console.error('Attempted to parse:', jsonMatch ? jsonMatch[0] : 'N/A');
+            console.error('Parse error details:', parseError.message);
             jobs[jobId] = {
               status: 'failed',
               error: 'Failed to parse LLM response'
@@ -344,6 +403,7 @@ router.post('/generate', upload.none(), async (req, res) => {
           path: pdfFile.path,
           extractedText: pdfText ? pdfText.substring(0, 500) + '...' : null
         } : null,
+        summary: summary,
         recommendations,
         count: recommendations.length,
         generatedAt: new Date().toISOString()
