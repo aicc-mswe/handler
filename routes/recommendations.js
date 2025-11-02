@@ -44,7 +44,7 @@ CRITICAL INSTRUCTIONS:
 3. You can recommend cards from ANY bank/issuer, as long as the card network matches the filter
 4. Analyze spending categories (dining, travel, groceries, gas, etc.) to match with appropriate reward structures
 5. Recommend exactly 3 credit cards that best match the spending patterns and filters (ranked by match score)
-6. Provide detailed information including benefits, pros, and cons for each card
+6. Provide detailed information including benefits and pros for each card
 7. Ensure recommendations align with the user's spending habits and financial profile
 
 IMPORTANT REQUIREMENTS:
@@ -73,7 +73,6 @@ You must respond with a valid JSON object with the following structure:
       "rewards": "Brief description of rewards that align with user's spending patterns",
       "description": "Detailed description explaining why this card suits the user's SPENDING HABITS",
       "pros": ["Benefit 1 related to spending", "Benefit 2", "Benefit 3"],
-      "cons": ["Drawback 1", "Drawback 2"],
       "applyLink": "REAL_APPLICATION_URL_FROM_OFFICIAL_BANK_WEBSITE"
     }
   ]
