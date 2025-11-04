@@ -23,11 +23,17 @@ const { randomUUID } = require('crypto');
 function buildRecommendationPrompt(filters, ocrText) {
   const prompt = `You are a credit card recommendation expert. Based on the user's preferences and spending patterns, recommend suitable credit cards.
 
-USER PREFERENCES AND FILTERS:
+USER PREFERENCES AND FILTERS (ALL FILTERS MUST BE RESPECTED):
 ${filters.cardTypes && filters.cardTypes.length > 0 ? `- Required Card Network: ${filters.cardTypes.join(', ')} *** MANDATORY - ONLY recommend cards from this network ***` : '- No card network restriction'}
-${filters.rewardTypes && filters.rewardTypes.length > 0 ? `- Desired Reward Types: ${filters.rewardTypes.join(', ')}` : '- No reward type preference'}
-${filters.annualFeeRange ? `- Annual Fee Range: $${filters.annualFeeRange}` : '- No annual fee preference'}
-${filters.additionalRequirements ? `- Additional Requirements: ${filters.additionalRequirements}` : ''}
+${filters.rewardTypes && filters.rewardTypes.length > 0 ? `- Desired Reward Types: ${filters.rewardTypes.join(', ')} *** IMPORTANT - Prioritize cards with these reward types ***` : '- No reward type preference'}
+${filters.annualFeeRange ? `- Annual Fee Range: $${filters.annualFeeRange} *** MANDATORY - All recommended cards MUST fall within this fee range ***` : '- No annual fee preference'}
+${filters.additionalRequirements ? `- Additional Requirements: ${filters.additionalRequirements} *** MUST be considered ***` : ''}
+
+FILTER COMPLIANCE RULES:
+1. Card Network filter is ABSOLUTE - no exceptions allowed
+2. Annual Fee filter is MANDATORY - exclude any cards outside this range
+3. Reward Types filter is HIGH PRIORITY - strongly prefer cards matching these types
+4. Additional Requirements must be incorporated into recommendations
 
 ${ocrText ? `USER SPENDING PATTERNS (from uploaded statement):
 ${ocrText}
@@ -36,18 +42,27 @@ IMPORTANT: The uploaded document shows the user's SPENDING HABITS and transactio
 ` : 'No spending data provided.'}
 
 CRITICAL INSTRUCTIONS:
-1. **MANDATORY CARD NETWORK FILTER**: If "Required Card Network" is specified (e.g., VISA, Mastercard, American Express, Discover), you MUST ONLY recommend cards from that exact network. This is NON-NEGOTIABLE.
+1. **MANDATORY CARD NETWORK FILTER**: If "Required Card Network" is specified (e.g., VISA, Mastercard, American Express, Discover), you MUST ONLY recommend cards from that exact network. This is NON-NEGOTIABLE. Recommending cards from other networks is STRICTLY FORBIDDEN.
    - Example: If filter = "VISA", recommend ONLY VISA cards (from any bank: Chase, Bank of America, Citi, etc.)
    - Example: If filter = "Mastercard", recommend ONLY Mastercard cards (from any bank)
    - Example: If filter = "American Express", recommend ONLY American Express cards
-2. Focus on the user's SPENDING PATTERNS from the uploaded statement, NOT the issuing bank
-3. You can recommend cards from ANY bank/issuer, as long as the card network matches the filter
-4. Analyze spending categories (dining, travel, groceries, gas, etc.) to match with appropriate reward structures
-5. Recommend exactly 3 credit cards that best match the spending patterns and filters (ranked by match score)
-6. Provide detailed information including benefits, pros, and cons for each card
-7. Ensure recommendations align with the user's spending habits and financial profile
+2. **MANDATORY ANNUAL FEE COMPLIANCE**: All recommended cards MUST have annual fees within the specified range. If range is "$0-100", do NOT recommend cards with $150+ annual fees.
+3. **REWARD TYPES PRIORITY**: When "Desired Reward Types" are specified (e.g., Flights, Cashback), strongly prioritize cards that offer these reward types. This is a key user preference.
+4. Focus on the user's SPENDING PATTERNS from the uploaded statement, NOT the issuing bank
+5. You can recommend cards from ANY bank/issuer, as long as they match ALL the filters
+6. Analyze spending categories (dining, travel, groceries, gas, etc.) to match with appropriate reward structures
+7. Recommend exactly 3 credit cards that best match the spending patterns and filters (ranked by match score)
+8. Provide detailed information including benefits, pros, and sign-up bonus for each card
+9. Ensure recommendations align with the user's spending habits, financial profile, AND all specified filters
+10. **REWARDS CLARITY**: The rewards field MUST clearly specify exact cashback percentages (e.g., "2% cash back") or points earning rates (e.g., "3x points on dining"). Always include the earning rate per dollar spent for different categories.
+11. **CRITICAL**: For sign-up bonus information, you MUST ONLY use data from the retrieved context/knowledge base. DO NOT make up or guess sign-up bonus offers. If no sign-up bonus information is available in the retrieved documents, use "Information not available" or "N/A".
 
 IMPORTANT REQUIREMENTS:
+- **STRICT FILTER COMPLIANCE**: Every recommended card MUST satisfy ALL user-specified filters (card network, annual fee range, reward types). Non-compliance is unacceptable.
+- **ANNUAL FEE VERIFICATION**: Double-check that each card's annual fee falls within the specified range before including it in recommendations.
+- **REWARD TYPE MATCHING**: When reward types are specified, ensure recommended cards offer strong rewards in those categories.
+- **REWARDS SPECIFICITY**: Rewards must include specific earning rates. Use formats like "X% cash back" or "Xx points per dollar". Break down by category when applicable (e.g., "3x points on dining and travel, 1x on everything else").
+- **SIGN-UP BONUS ACCURACY**: ONLY use sign-up bonus information that appears in the retrieved context/documents. Never fabricate or guess bonus amounts. If the information is not in the retrieved context, set signUpBonus to "Information not available".
 - **CARD NETWORK COMPLIANCE**: Strictly follow the "Required Card Network" filter. All recommended cards must be from the specified network (VISA/Mastercard/American Express/Discover)
 - **IGNORE STATEMENT ISSUER**: Do not let the bank that issued the uploaded statement influence your recommendations. Focus only on spending patterns.
 - **CROSS-BANK RECOMMENDATIONS**: Feel free to recommend cards from different banks (Chase, Citi, Bank of America, Capital One, etc.) as long as they match the card network filter
@@ -61,19 +76,19 @@ IMPORTANT REQUIREMENTS:
 OUTPUT FORMAT:
 You must respond with a valid JSON object with the following structure:
 {
-  "summary": "A 2-3 sentence explanation of WHY you are recommending these specific 3 cards based on the user's spending patterns and filters. Explain how they align with the user's needs.",
+  "summary": "A 2-3 sentence explanation of WHY you are recommending these specific 3 cards based on the user's spending patterns and filters. Mention how they satisfy the user's filter requirements (card network, annual fee, reward types).",
   "cards": [
     {
       "id": 1,
       "name": "Card Name",
       "bankName": "Bank Name",
       "image": "REAL_IMAGE_URL_FROM_OFFICIAL_BANK_WEBSITE",
-      "fee": "$XX",
-      "cardType": "VISA/Mastercard/American Express/Discover (MUST match the Required Card Network filter)",
-      "rewards": "Brief description of rewards that align with user's spending patterns",
-      "description": "Detailed description explaining why this card suits the user's SPENDING HABITS",
+      "fee": "$XX (MUST be within specified annual fee range)",
+      "cardType": "VISA/Mastercard/American Express/Discover (MUST EXACTLY match the Required Card Network filter)",
+      "signUpBonus": "ONLY use sign-up bonus from retrieved context. If not found in context, use 'Information not available'. Example: 'Earn 60,000 bonus points after spending $4,000 in first 3 months' or 'Information not available'",
+      "rewards": "MUST clearly specify the exact cashback percentage or points earned per dollar spent. Include category-specific rates. Should align with user's desired reward types if specified. Example: '2% cash back on all purchases' or '3x points on dining, 2x on travel, 1x on everything else' or '5% cash back on rotating categories'",
+      "description": "Detailed description explaining why this card suits the user's SPENDING HABITS and how it meets their filter criteria",
       "pros": ["Benefit 1 related to spending", "Benefit 2", "Benefit 3"],
-      "cons": ["Drawback 1", "Drawback 2"],
       "applyLink": "REAL_APPLICATION_URL_FROM_OFFICIAL_BANK_WEBSITE"
     }
   ]
@@ -81,6 +96,12 @@ You must respond with a valid JSON object with the following structure:
 
 Example summary:
 "Based on your high spending on dining and travel, these three VISA cards offer the best rewards in those categories. The Chase Sapphire Preferred leads with 2x points on travel and dining, while the Bank of America Travel Rewards provides no annual fee access to travel perks. The Citi Premier rounds out with bonus points on restaurants and gas stations."
+
+REWARDS FIELD EXAMPLES (follow these formats):
+- Cash back cards: "2% cash back on all purchases" or "3% cash back on dining, 2% on gas, 1% on everything else"
+- Points cards: "3x points on dining and travel, 1x on all other purchases" or "5x points on flights booked through airline portals, 2x on restaurants"
+- Category bonus: "5% cash back on rotating quarterly categories (up to $1,500 per quarter), 1% on everything else"
+- Tiered rewards: "3% cash back at U.S. supermarkets (up to $6,000/year), 2% at U.S. gas stations, 1% on other purchases"
 
 Examples showing cross-bank recommendations within the same network:
 - If filter = "VISA", you can recommend:
@@ -142,7 +163,7 @@ async function queryLLM(prompt) {
       headers: {
         'Content-Type': 'application/json'
       },
-      timeout: 60000 // 60 seconds timeout
+      timeout: 120000 // 120 seconds timeout (increased for LLM processing)
     });
     
     console.log('\n=== RAG Retriever Response ===');
