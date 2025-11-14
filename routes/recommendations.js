@@ -21,6 +21,11 @@ const { randomUUID } = require('crypto');
  * Build prompt for LLM to generate credit card recommendations
  */
 function buildRecommendationPrompt(filters, ocrText) {
+  // Determine summary instruction based on whether OCR text is available
+  const summaryInstruction = ocrText 
+    ? 'Based on your uploaded statement, analyze the spending patterns and provide a consumer spending analysis (e.g., "Your spending is primarily in dining (40%), travel (30%), and groceries (20%). Based on these patterns..."). Then explain WHY you are recommending these specific 3 cards and how they match your spending habits and filter requirements (card network, annual fee, reward types).'
+    : 'Since no statement was uploaded, explain WHY you are recommending these specific 3 cards based on the user\'s filter preferences (card network, annual fee, reward types). Describe what type of consumer would benefit most from these cards.';
+
   const prompt = `You are a credit card recommendation expert. Based on the user's preferences and spending patterns, recommend suitable credit cards.
 
 USER PREFERENCES AND FILTERS (ALL FILTERS MUST BE RESPECTED):
@@ -76,7 +81,7 @@ IMPORTANT REQUIREMENTS:
 OUTPUT FORMAT:
 You must respond with a valid JSON object with the following structure:
 {
-  "summary": "A 2-3 sentence explanation of WHY you are recommending these specific 3 cards based on the user's spending patterns and filters. Mention how they satisfy the user's filter requirements (card network, annual fee, reward types).",
+  "summary": "${summaryInstruction}",
   "cards": [
     {
       "id": 1,
@@ -193,48 +198,48 @@ async function queryLLM(prompt) {
 }
 
 /**
- * Extract text from PDF using OCR (Tesseract.js)
- * This function attempts to extract text from PDF
+ * Extract text from PDF using pdf-parse
+ * This function extracts text from text-based PDFs
+ * Note: For scanned/image PDFs, you would need to convert PDF to images first,
+ * then use OCR on those images (requires additional libraries like pdf2pic)
  */
 async function extractTextFromPDF(pdfPath) {
   try {
-    // First, try to extract text directly from PDF (if it contains text)
     const dataBuffer = fs.readFileSync(pdfPath);
-    let extractedText = '';
     
-    try {
-      const pdfData = await pdf(dataBuffer);
-      extractedText = pdfData.text;
-      
-      // If we got meaningful text, return it
-      if (extractedText.trim().length > 0) {
-        console.log('--- Extracted Text (Direct) ---');
-        console.log(extractedText);
-        console.log('--- End of Extracted Text ---');
-        return extractedText;
-      }
-    } catch (pdfError) {
-      // Fall back to OCR if direct extraction fails
+    console.log('--- Extracting text from PDF ---');
+    console.log(`File size: ${dataBuffer.length} bytes`);
+    
+    // Try to parse with pdf-parse
+    const pdfData = await pdf(dataBuffer, {
+      // Increase max pages to prevent timeout
+      max: 50,
+      // Normalize whitespace
+      normalizeWhitespace: true
+    });
+    
+    const extractedText = pdfData.text;
+    
+    if (!extractedText || extractedText.trim().length === 0) {
+      console.warn('Warning: PDF appears to be empty or contains only images');
+      console.warn('For scanned PDFs, you need to convert to images first, then use OCR');
+      return null; // Return null instead of error message
     }
     
-    // If direct extraction failed or returned empty, use OCR
-    const worker = await createWorker('eng');
-    
-    // For now, we'll OCR the first page
-    // Note: Full PDF to image conversion would require additional libraries
-    const { data: { text } } = await worker.recognize(pdfPath);
-    
-    await worker.terminate();
-    
-    console.log('--- Extracted Text (OCR) ---');
-    console.log(text);
+    console.log('--- Extracted Text ---');
+    console.log(extractedText.substring(0, 500) + '...');
+    console.log(`Total characters extracted: ${extractedText.length}`);
     console.log('--- End of Extracted Text ---');
     
-    return text;
+    return extractedText;
     
   } catch (error) {
-    console.error('Error during PDF text extraction:', error);
-    throw error;
+    console.error('Error during PDF text extraction:', error.message);
+    console.error('PDF file may be corrupted, password-protected, or in an unsupported format');
+    
+    // Return null to indicate extraction failed
+    // This will trigger the "no statement uploaded" flow
+    return null;
   }
 }
 
@@ -302,20 +307,41 @@ router.post('/generate', upload.none(), async (req, res) => {
     // Process recommendation generation asynchronously
     (async () => {
       let pdfText = null;
+      let pdfExtractionError = null;
       
-      // If PDF file is provided, perform OCR
+      // If PDF file is provided, perform text extraction
       if (pdfFile) {
+        console.log(`\n=== Processing PDF File ===`);
+        console.log(`File ID: ${pdfFile.id}`);
+        console.log(`File Path: ${pdfFile.path}`);
+        console.log(`File exists: ${fs.existsSync(pdfFile.path)}`);
+        
         try {
           pdfText = await extractTextFromPDF(pdfFile.path);
+          console.log(`\n=== PDF Text Extraction Result ===`);
+          console.log(`Text extracted: ${pdfText ? 'YES' : 'NO'}`);
+          console.log(`Text length: ${pdfText ? pdfText.length : 0}`);
+          console.log(`Text is empty string: ${pdfText === ''}`);
+          console.log(`Text is null: ${pdfText === null}`);
+          console.log(`=== End of PDF Text Extraction Result ===\n`);
+          
+          if (!pdfText) {
+            pdfExtractionError = 'PDF file could not be processed. The file may be corrupted, password-protected, or in an unsupported format. Recommendations will be based only on your filter preferences.';
+          }
         } catch (ocrError) {
-          console.error(`OCR failed:`, ocrError);
-          // Continue even if OCR fails
+          console.error(`PDF text extraction failed:`, ocrError);
+          pdfExtractionError = 'PDF text extraction encountered an error. Recommendations will be based only on your filter preferences.';
+          // Continue even if extraction fails
         }
+      } else {
+        console.log('\n=== No PDF File Provided ===\n');
       }
       
       // Build prompt for LLM
+      console.log(`\n=== Building Prompt ===`);
+      console.log(`pdfText value: ${pdfText === null ? 'null' : pdfText === '' ? 'empty string' : 'has content (' + pdfText.length + ' chars)'}`);
       const prompt = buildRecommendationPrompt(filters, pdfText);
-      console.log('\n=== Generated Prompt for LLM ===');
+      console.log('=== Generated Prompt for LLM ===');
       console.log(prompt);
       console.log('=== End of Prompt ===\n');
       
@@ -422,7 +448,9 @@ router.post('/generate', upload.none(), async (req, res) => {
           originalName: pdfFile.originalName,
           size: pdfFile.size,
           path: pdfFile.path,
-          extractedText: pdfText ? pdfText.substring(0, 500) + '...' : null
+          extractedText: pdfText ? pdfText.substring(0, 500) + '...' : null,
+          extractionSuccess: !!pdfText,
+          extractionError: pdfExtractionError
         } : null,
         summary: summary,
         recommendations,
