@@ -581,4 +581,116 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+/**
+ * POST /recommendations/chat
+ * Chat about a specific recommendation
+ * 
+ * Request body:
+ * {
+ *   "recommendationId": "string",
+ *   "message": "user's question",
+ *   "chatHistory": [...previous messages],
+ *   "recommendationData": {
+ *     "summary": "...",
+ *     "recommendations": [...cards],
+ *     "filters": {...}
+ *   }
+ * }
+ */
+router.post('/chat', async (req, res) => {
+  try {
+    const { recommendationId, message, chatHistory, recommendationData } = req.body;
+
+    // Validate inputs
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Message is required'
+      });
+    }
+
+    if (!recommendationData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Recommendation data is required'
+      });
+    }
+
+    // Build context from recommendation data
+    const cardsContext = recommendationData.recommendations?.map(card => 
+      `Card: ${card.name} by ${card.bankName}
+      - Card Type: ${card.cardType}
+      - Annual Fee: ${card.fee}
+      - Sign-up Bonus: ${card.signUpBonus || 'N/A'}
+      - Rewards: ${card.rewards}
+      - Description: ${card.description}
+      - Pros: ${card.pros?.join(', ') || 'N/A'}`
+    ).join('\n\n') || 'No cards available';
+
+    // Build chat history context
+    const chatContext = chatHistory?.map(msg => 
+      `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+    ).join('\n') || 'No previous conversation';
+
+    // Build prompt for chat
+    const chatPrompt = `You are a helpful credit card advisor assistant. You are having a conversation with a user about their credit card recommendations.
+
+RECOMMENDED CARDS CONTEXT:
+Summary: ${recommendationData.summary || 'N/A'}
+User's Filter Preferences: ${JSON.stringify(recommendationData.filters || {}, null, 2)}
+
+${cardsContext}
+
+PREVIOUS CONVERSATION:
+${chatContext}
+
+USER'S CURRENT QUESTION:
+${message}
+
+INSTRUCTIONS:
+1. Answer the user's question based on the recommended cards and conversation context
+2. Be helpful, friendly, and concise
+3. If asked about specific cards, refer to the card details provided above
+4. If asked about benefits not mentioned, you can provide general knowledge about credit cards but prioritize information from the context
+5. If you don't know something specific about a card, be honest and suggest checking the issuer's website
+6. Keep responses clear and well-organized
+7. Use bullet points or numbered lists when appropriate
+8. DO NOT include generic closing statements like "If you have any questions" or "Feel free to ask" - this is an ongoing conversation
+9. End your response naturally after answering the question
+
+Provide a direct, helpful response to the user's question without unnecessary closing remarks:`;
+
+    console.log('\n=== Chat Request ===');
+    console.log('Recommendation ID:', recommendationId);
+    console.log('User Message:', message);
+    console.log('Chat History Length:', chatHistory?.length || 0);
+    console.log('Building chat prompt...');
+
+    // Call LLM
+    const llmResponse = await queryLLM(chatPrompt);
+
+    console.log('\n=== LLM Chat Response ===');
+    console.log('Response received');
+
+    // Extract answer from LLM response
+    const answer = llmResponse.response || llmResponse.answer || 'I apologize, but I could not generate a response. Please try again.';
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reply: answer,
+        messageId: `msg-${Date.now()}`
+      }
+    });
+
+  } catch (error) {
+    console.error('Error processing chat request:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process chat request',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
