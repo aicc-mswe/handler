@@ -60,22 +60,22 @@ CRITICAL INSTRUCTIONS:
 8. Provide detailed information including benefits, pros, and sign-up bonus for each card
 9. Ensure recommendations align with the user's spending habits, financial profile, AND all specified filters
 10. **REWARDS CLARITY**: The rewards field MUST clearly specify exact cashback percentages (e.g., "2% cash back") or points earning rates (e.g., "3x points on dining"). Always include the earning rate per dollar spent for different categories.
-11. **CRITICAL**: For sign-up bonus information, you MUST ONLY use data from the retrieved context/knowledge base. DO NOT make up or guess sign-up bonus offers. If no sign-up bonus information is available in the retrieved documents, use "Information not available" or "N/A".
+11. **CRITICAL**: For sign-up bonus information, you MUST ONLY use data from the retrieved context/knowledge base. DO NOT make up or guess sign-up bonus offers. If no sign-up bonus information is available in the retrieved documents, use "Information not available" or "N/A". When reading bonus amounts, ignore any crossed-out or old offers - always use the current/highest bonus amount mentioned.
 
 IMPORTANT REQUIREMENTS:
 - **STRICT FILTER COMPLIANCE**: Every recommended card MUST satisfy ALL user-specified filters (card network, annual fee range, reward types). Non-compliance is unacceptable.
 - **ANNUAL FEE VERIFICATION**: Double-check that each card's annual fee falls within the specified range before including it in recommendations.
 - **REWARD TYPE MATCHING**: When reward types are specified, ensure recommended cards offer strong rewards in those categories.
 - **REWARDS SPECIFICITY**: Rewards must include specific earning rates. Use formats like "X% cash back" or "Xx points per dollar". Break down by category when applicable (e.g., "3x points on dining and travel, 1x on everything else").
-- **SIGN-UP BONUS ACCURACY**: ONLY use sign-up bonus information that appears in the retrieved context/documents. Never fabricate or guess bonus amounts. If the information is not in the retrieved context, set signUpBonus to "Information not available".
+- **SIGN-UP BONUS ACCURACY**: ONLY use sign-up bonus information that appears in the retrieved context/documents. Never fabricate or guess bonus amounts. If the information is not in the retrieved context, set signUpBonus to "Information not available". If you see multiple bonus amounts in the context (e.g., old crossed-out offer and new offer), ALWAYS use the HIGHER/CURRENT bonus amount.
 - **CARD NETWORK COMPLIANCE**: Strictly follow the "Required Card Network" filter. All recommended cards must be from the specified network (VISA/Mastercard/American Express/Discover)
 - **IGNORE STATEMENT ISSUER**: Do not let the bank that issued the uploaded statement influence your recommendations. Focus only on spending patterns.
 - **CROSS-BANK RECOMMENDATIONS**: Feel free to recommend cards from different banks (Chase, Citi, Bank of America, Capital One, etc.) as long as they match the card network filter
-- Use REAL credit card image URLs from the OFFICIAL BANK WEBSITE for each specific card
-- Use REAL credit card application URLs from the OFFICIAL BANK WEBSITE for each specific card
+- **CRITICAL - IMAGE URL ACCURACY**: You MUST use the EXACT "Official Image URL" provided in the retrieved context for each card. The context will explicitly provide "Official Image URL: https://..." for each credit card. DO NOT modify, change, or make up image URLs. Copy the exact URL from the context.
+- **CRITICAL - APPLICATION LINK**: If an application URL or source URL is provided in the context, use it. Otherwise, construct it based on the card name and issuer.
 - DO NOT use placeholder URLs like "https://example.com"
-- Each card should have its own unique image URL from its issuing bank's website
-- Each card should have its own unique application URL from its issuing bank's website
+- Each card should have its own unique image URL from the retrieved context
+- Each card should have its own unique application URL
 - Different banks will have DIFFERENT domain names (e.g., Chase cards use chase.com, Amex cards use americanexpress.com, Citi cards use citi.com, Capital One cards use capitalone.com, etc.)
 
 OUTPUT FORMAT:
@@ -85,16 +85,16 @@ You must respond with a valid JSON object with the following structure:
   "cards": [
     {
       "id": 1,
-      "name": "Card Name",
-      "bankName": "Bank Name",
-      "image": "REAL_IMAGE_URL_FROM_OFFICIAL_BANK_WEBSITE",
-      "fee": "$XX (MUST be within specified annual fee range)",
+      "name": "Card Name (MUST match the card name from retrieved context)",
+      "bankName": "Bank Name (MUST match the issuer from retrieved context)",
+      "image": "EXACT_IMAGE_URL_FROM_CONTEXT (Copy the 'Official Image URL' from the retrieved context exactly as provided)",
+      "fee": "$XX (MUST be within specified annual fee range AND match the fee mentioned in retrieved context)",
       "cardType": "VISA/Mastercard/American Express/Discover (MUST EXACTLY match the Required Card Network filter)",
       "signUpBonus": "ONLY use sign-up bonus from retrieved context. If not found in context, use 'Information not available'. Example: 'Earn 60,000 bonus points after spending $4,000 in first 3 months' or 'Information not available'",
       "rewards": "MUST clearly specify the exact cashback percentage or points earned per dollar spent. Include category-specific rates. Should align with user's desired reward types if specified. Example: '2% cash back on all purchases' or '3x points on dining, 2x on travel, 1x on everything else' or '5% cash back on rotating categories'",
       "description": "Detailed description explaining why this card suits the user's SPENDING HABITS and how it meets their filter criteria",
       "pros": ["Benefit 1 related to spending", "Benefit 2", "Benefit 3"],
-      "applyLink": "REAL_APPLICATION_URL_FROM_OFFICIAL_BANK_WEBSITE"
+      "applyLink": "REAL_APPLICATION_URL (Use Source URL from context if available, or construct based on card name and issuer)"
     }
   ]
 }
